@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Файл: gpoup_select.py
@@ -31,70 +32,74 @@
 """
 
 import sys
+
 try:
     import torch
+
     print(sys.executable)
     print(torch.__version__)
 except Exception:
     print(sys.executable)
     print("torch not imported")
 
-# Конфигурация
-# Пути и отчёты
-ROOT_DIR              = r"D:\Проект_Катя\6 солонец 2024"     # Корневой каталог с папками серий
-REPORTS_DIR           = r"D:\Проект_Катя\отчёты"             # Куда класть summary/details; ""/None => в ROOT_DIR
-SERIES_DB_PATH        = r"D:\Проект_Катя\6 солонец 2024.csv" # Общий CSV; ""/None => базу не вести
-WRITE_DB_WITH_BOM     = True                                    # Писать базу в utf-8-sig (Excel-friendly)
+# Конфигурация путей и отчётов
+ROOT_DIR         = r"D:\xxxxxxxx\6 солонец 2022"     # корневой каталог с папками серий
+REPORTS_DIR      = r"D:\xxxxxxxx\отчёты"             # куда класть summary/details; ""/None => в ROOT_DIR
+SERIES_DB_PATH   = r"D:\xxxxxxxx\6 солонец 2022.csv" # общий CSV; ""/None => базу не вести
+WRITE_DB_WITH_BOM = True                             # писать базу в utf-8-sig (Excel-friendly)
 
-# Поведение и производительность
-CHECK_NODATE          = True                                     # Проверять папку NoDate
-WORKERS               = None                                     # None=авто (4*CPU) для EXIF по JPG; или число
-MOV_BATCH             = 800                                      # Размер батча для exiftool по .mov
-PROGRESS_EVERY        = 100                                      # Прогресс по JPG EXIF
+# Настройки поведения и производительности
+CHECK_NODATE     = True                              # проверять папку NoDate
+WORKERS          = None                              # None=авто (4*CPU) для EXIF по JPG; или число
+MOV_BATCH        = 800                               # размер батча для exiftool по .mov
+PROGRESS_EVERY   = 100                               # прогресс по JPG EXIF
 
-# Настройки ИИ
-ENABLE_AI             = True                                     # Включить ИИ-определение объектов по сериям
-MAX_IMAGES_PER_SERIES = 30                                       # Максимум фото на серию (равномерная выборка)
-FRAMES_PER_VIDEO      = 4                                        # Сколько кадров извлекать из каждого .mov
-CLIP_MODEL            = "ViT-L-14"                               # Модель open_clip
-CLIP_PRETRAINED       = "openai"                                   # Датасет для предобучения модели ("openai", "laion2b_s32b_b82k" и др.)                                 
-CLIP_BATCH            = 16                                       # Батч для инференса
-SERIES_CONF_PRINT_TOPK= 3                                        # Сколько топ-классов печатать в консоль
-FRAME_CONF_THRESHOLD  = 0.20                                     # Порог «кадр содержит класс» для счётчиков
-AI_TOPK_TO_DB         = 3                                        # Сколько топ-классов писать в ai_top3
-AI_ADD_COLUMNS        = True                                     # Добавлять новые колонки в базу (если False - только консоль)
-MERGE_LABELS          = {"deer": ["elk"]}                        # Объединяем elk в deer (марал/олень в один класс)
+# Настройки ИИ-классификации
+ENABLE_AI              = True                        # включить ИИ-определение объектов по сериям
+MAX_IMAGES_PER_SERIES  = 30                         # максимум фото на серию (равномерная выборка)
+FRAMES_PER_VIDEO       = 4                          # сколько кадров извлекать из каждого .mov
+CLIP_MODEL             = "ViT-L-14"                 # модель open_clip
+CLIP_PRETRAINED        = "openai"                   # датасет для предобучения ("openai", "laion2b_s32b_b82k" и др.)
+CLIP_BATCH             = 16                         # батч для инференса
+SERIES_CONF_PRINT_TOPK = 3                          # сколько топ-классов печатать в консоль
+FRAME_CONF_THRESHOLD   = 0.20                       # порог «кадр содержит класс» для счётчиков
+AI_TOPK_TO_DB          = 3                         # сколько топ-классов писать в ai_top3
+AI_ADD_COLUMNS         = True                       # добавлять новые колонки в базу (если False - только консоль)
+MERGE_LABELS           = {"deer": ["elk"]}          # объединяем elk в deer (марал/олень в один класс)
 
-# Агрегация по серии
-# Итоговый score = W_PRESENCE * presence(noisy-OR) + W_SHARE * share_top1
-W_PRESENCE            = 0.6                                       # Вес присутствия класса в серии (noisy-OR агрегация)
-W_SHARE               = 0.4                                       # Вес доли кадров где класс топ-1
-# Снижение «пересыщения» логитов кадра
-LOGIT_TEMPERATURE     = 30.0                                      # Температура для нормализации логитов (чем выше - мягче распределение)                                     
+# Веса для итогового расчёта
+W_PRESENCE      = 0.6                            # вес общего присутствия класса в серии
+W_SHARE         = 0.4                            # вес доли кадров, где класс основной
 
-# Подавление класса "empty"
-EMPTY_KEEP_SHARE      = 0.50                                     # Если empty покрывает >=50% кадров - можно дать шанс
-EMPTY_KEEP_PRESENCE   = 0.80                                     # Либо presence у empty >= 0.80 - можно дать шанс
-EMPTY_KEEP_MARGIN     = 0.15                                     # Запас empty над лучшим не-empty по share/presence
-NONEMPTY_STRONG_SHARE = 0.25                                     # Сильный сигнал не-empty по share
-NONEMPTY_STRONG_PRESENCE= 0.50                                   # Сильный сигнал не-empty по presence
-EMPTY_SUPPRESS_FACTOR = 0.30                                     # Во сколько раз ослабляем empty при подавлении
-EMPTY_MIN_FACTOR      = 0.05                                     # Минимальный фактор подавления empty
-PRINT_EMPTY_GATING_DEBUG = True                                  # Печатать причины подавления
+# Нормализация результатов
+LOGIT_TEMPERATURE = 30.0                         # температурный параметр для сглаживания
 
-# Few-shot / визуальные прототипы
-ENABLE_FEWSHOT        = True                                     # Включить визуальные прототипы
-CONTENT_DIR           = r"D:\Проект_Катя\content"                # Content/<folder>/<*.jpg|png|webp...>
-# Маппинг: папка в content -> внутренняя метка модели
-CONTENT_CLASS_MAP     = {
-    "bear":  "bear",
-    "empty": "empty",
-    "person":"person",
-    "maral": "deer",  # «марал» копим в целевой класс deer
+# Настройки для класса "пусто"
+EMPTY_KEEP_SHARE      = 0.50                     # порог кадров для сохранения метки "пусто"
+EMPTY_KEEP_PRESENCE   = 0.80                     # порог уверенности для метки "пусто" 
+EMPTY_KEEP_MARGIN     = 0.15                     # минимальный отрыв от других меток
+NONEMPTY_STRONG_SHARE = 0.25                     # сильный сигнал присутствия объекта
+NONEMPTY_STRONG_PRESENCE = 0.50                  # высокая уверенность в объекте
+EMPTY_SUPPRESS_FACTOR = 0.30                     # коэффициент подавления "пусто"
+EMPTY_MIN_FACTOR      = 0.05                     # минимальный коэффициент
+PRINT_EMPTY_GATING_DEBUG = True                  # отладочный вывод
+
+# Настройки Few-shot / визуальных прототипов
+ENABLE_FEWSHOT    = True                           # включить визуальные прототипы
+CONTENT_DIR       = r"D:\Проект_Катя\content"      # Content/<folder>/<*.jpg|png|webp...>
+
+# Маппинг меток: папка в content -> внутренняя метка модели
+CONTENT_CLASS_MAP = {
+    "bear":   "bear",
+    "empty":  "empty",
+    "person": "person",
+    "maral":  "deer",                              # «марал» копим в целевой класс deer
 }
-CONTENT_MAX_IMAGES_PER_CLASS = 200                               # Ограничение на число эталонов на класс
-PROTO_WEIGHT          = 0.55                                     # Вес прототипов при слиянии логитов (0..1)
-PROTO_TEMPERATURE     = 30.0                                     # «Температура» для прототипных логитов
+
+# Параметры прототипов
+CONTENT_MAX_IMAGES_PER_CLASS = 200                 # ограничение на число эталонов на класс
+PROTO_WEIGHT      = 0.55                          # вес прототипов при слиянии логитов (0..1)
+PROTO_TEMPERATURE = 30.0                          # температура для прототипных логитов
 
 # Классы и текстовые промпты для zero-shot
 AI_CLASSES = {
@@ -127,7 +132,7 @@ AI_CLASSES = {
     "dog": ["a dog"],
     "cow": ["a cow"],
     "horse": ["a horse"],
-        "person": [
+    "person": [
         "a person with a visible human face (eyes, nose, mouth) partially occluded by branches",
         "a person with visible hands and five fingers",
         "a close-up of a human hand with fingers spread",
@@ -155,170 +160,178 @@ AI_CLASSES = {
         "a person with gloves (fingers shape still discernible)",
         "a person wearing a backpack viewed from behind",
         "a person in rain or snow with wet clothing and visible face or hands",
-# -*- coding: utf-8 -*-
-"""
-Файл: gpoup_select.py
+        "a security camera style night image of a person outdoors",
         "soft negative: a person present in a forest scene with no animals visible"
-Описание: Валидация и анализ папок серий (JPG/MOV), сбор статистики и опциональный AI-анализ содержимого серий.
-Автор: naumenko33301 <naumenko33301@gmail.com>mpty": ["This is not a deer, this is not a bear, this is a photo of a forest. This is not a deer, this is not a bear, this is a photo of a forest. This is not a deer, this is not a bear, this is a photo of a forest. This is not a deer, this is not a bear. Empty."]
-Организация:
-Дата создания: 2025-10-20
-Версия: 1.0
-Лицензия: All Rights Reservedimport csv
-"""n
-"""
-Проверка серий JPG/MOV и ИИ-анализ содержимого серий.
-Все пути и флаги задаются в CONFIG (без CLI аргументов).me
-
-Ключевое:lib
-- Валидация соответствия дат/временных интервалов именам папок.ics
-- Сбор сводной статистики и запись в CSV-базу (опционально).
-- ИИ-классификация (CLIP): фото + кадры из видео -> агрегирование по серии.
-urrent.futures import ThreadPoolExecutor, as_completed
-Функциональность:
-1) Проверяет соответствие файлов интервалам папок серий (конец минуты включительно).
-2) Собирает статистику по сериям и ведёт общую базу CSV.
-3) ИИ-классификация: кадры из фото + семплы из .mov -> агрегация по серии.try:
-4) Итоговый ответ по серии с учётом уверенности и частоты кадров.import exifread
-
-Зависимости:библиотека 'exifread'. Установите: pip install exifread", file=sys.stderr)
-    pip install exifread
-    pip install open-clip-torch pillow opencv-python numpy
-    + PyTorch (CUDA)# ИИ зависимости - грузим лениво, чтобы скрипт работал и без них (если ENABLE_AI=False)
-    exiftool (для MOV дат; exiftool.exe в PATH или рядом со скриптом)
-"""
-
-import sys
-try: = None
-    import torch
-    print(sys.executable)
-    print(torch.__version__)def _lazy_import_ai():
-except Exception: _torch, _cv2, _np, _PIL_Image, _PIL
-    print(sys.executable)
-    print("torch not imported")s _open_clip  # type: ignore
-
-# Конфигурацияs _torch  # type: ignore
-# Пути и отчёты
-ROOT_DIR              = r"D:\Проект_Катя\6 солонец 2024"     # Корневой каталог с папками серийs _cv2  # type: ignore
-REPORTS_DIR           = r"D:\Проект_Катя\отчёты"             # Куда класть summary/details; ""/None => в ROOT_DIR
-SERIES_DB_PATH        = r"D:\Проект_Катя\6 солонец 2024.csv" # Общий CSV; ""/None => базу не вестиy as _np  # type: ignore
-WRITE_DB_WITH_BOM     = True                                    # Писать базу в utf-8-sig (Excel-friendly)
-ort Image as _PIL_Image  # type: ignore
-# Поведение и производительность
-CHECK_NODATE          = True                                     # Проверять папку NoDate
-WORKERS               = None                                     # None=авто (4*CPU) для EXIF по JPG; или число# Папка серии
-MOV_BATCH             = 800                                      # Размер батча для exiftool по .mov = re.compile(
-PROGRESS_EVERY        = 100                                      # Прогресс по JPG EXIF-\d{2})_S(?P<idx>\d{3})_(?P<t1>\d{4})-(?P<t2>\d{4})(?:_(?P<tags>.*))?$"
-
-# Настройки ИИODATE_DIRNAME = "NoDate"
-ENABLE_AI             = True                                     # Включить ИИ-определение объектов по сериям
-MAX_IMAGES_PER_SERIES = 30                                       # Максимум фото на серию (равномерная выборка)EXT_JPG = {".jpg", ".jpeg", ".jpe", ".jfif", ".jif", ".pjpeg", ".pjp"}
-FRAMES_PER_VIDEO      = 4                                        # Сколько кадров извлекать из каждого .mov
-CLIP_MODEL            = "ViT-L-14"                               # Модель open_clip
-CLIP_PRETRAINED       = "openai"                                   # Датасет для предобучения модели ("openai", "laion2b_s32b_b82k" и др.)                                 def _auto_workers():
-CLIP_BATCH            = 16                                       # Батч для инференсаs.cpu_count() or 8) * 4)
-SERIES_CONF_PRINT_TOPK= 3                                        # Сколько топ-классов печатать в консоль
-FRAME_CONF_THRESHOLD  = 0.20                                     # Порог «кадр содержит класс» для счётчиковdef media_kind(path: Path) -> str:
-AI_TOPK_TO_DB         = 3                                        # Сколько топ-классов писать в ai_top3
-MERGE_LABELS          = {"deer": ["elk"]}                        # Объединяем elk в deer (марал/олень в один класс)                              # Добавлять новые колонки в базу (если False - только консоль) "jpg"
-
-# Агрегация по серии
-# Итоговый score = W_PRESENCE * presence(noisy-OR) + W_SHARE * share_top1
-W_PRESENCE            = 0.6                                       # Вес присутствия класса в серии (noisy-OR агрегация)
-W_SHARE               = 0.4                                       # Вес доли кадров где класс топ-1
-# Снижение «пересыщения» логитов кадра
-LOGIT_TEMPERATURE     = 30.0                                      # Температура для нормализации логитов (чем выше - мягче распределение)                                     
-
-# Подавление класса "empty"
-EMPTY_KEEP_SHARE      = 0.50                                     # Если empty покрывает >=50% кадров - можно дать шанс
-EMPTY_KEEP_PRESENCE   = 0.80                                     # Либо presence у empty >= 0.80 - можно дать шанс
-EMPTY_KEEP_MARGIN     = 0.15                                     # Запас empty над лучшим не-empty по share/presence
-NONEMPTY_STRONG_SHARE = 0.25                                     # Сильный сигнал не-empty по share
-NONEMPTY_STRONG_PRESENCE= 0.50                                   # Сильный сигнал не-empty по presence
-EMPTY_SUPPRESS_FACTOR = 0.30                                     # Во сколько раз ослабляем empty при подавлении
-EMPTY_MIN_FACTOR      = 0.05                                     # Минимальный фактор подавления empty
-PRINT_EMPTY_GATING_DEBUG = True                                  # Печатать причины подавления
-
-# Few-shot / визуальные прототипы
-ENABLE_FEWSHOT        = True                                     # Включить визуальные прототипы
-CONTENT_DIR           = r"D:\Проект_Катя\content"                # Content/<folder>/<*.jpg|png|webp...>
-# Маппинг: папка в content -> внутренняя метка модели
-CONTENT_CLASS_MAP     = {
-    "bear":  "bear",
-    "empty": "empty",
-    "person":"person",
-    "maral": "deer",  # «марал» копим в целевой класс deer
+    ],
+    "empty": [
+        "This is not a deer, this is not a bear, this is a photo of a forest. This is not a deer, this is not a bear, this is a photo of a forest. This is not a deer, this is not a bear, this is a photo of a forest. This is not a deer, this is not a bear. Empty."]
 }
-CONTENT_MAX_IMAGES_PER_CLASS = 200                               # Ограничение на число эталонов на класс
-PROTO_WEIGHT          = 0.55                                     # Вес прототипов при слиянии логитов (0..1)
-PROTO_TEMPERATURE     = 30.0                                     # «Температура» для прототипных логитов
 
-# Классы и текстовые промпты для zero-shot
-AI_CLASSES = {
-    "bear": [
-        "a photo of a bear",
-        "a brown bear in the forest",
-        "a black bear in the wild"
-    ],
-    "deer": [
-        "a photo of a deer",
-        "a red deer in the forest",
-        "a roe deer in the wild",
-        "a white-tailed deer",
-        "an elk (wapiti) in the forest",
-        "a maral (Cervus canadensis)"
-    ],
-    "elk": [
-        "an elk (wapiti)",
-        "a maral with antlers"
-    ],
-    "moose": [
-        "a moose (alces alces)"
-    ],
-    "boar": [
-        "a wild boar",
-        "a feral hog"
-    ],
-    "wolf": ["a wolf in the wild"],
-    "fox": ["a fox in the forest"],
-    "dog": ["a dog"],
-    "cow": ["a cow"],
-    "horse": ["a horse"],
-        "person": [
-        "a person with a visible human face (eyes, nose, mouth) partially occluded by branches",
-        "a person with visible hands and five fingers",
-        "a close-up of a human hand with fingers spread",
-        "a close-up of a human face in a hood or mask (eyes and nose visible)",
-        "a person in profile showing head, neck, and shoulders",
-        "a back view of a person with head and shoulders visible",
-        "a person walking upright on two legs",
-        "a person running with arms swinging",
-        "a person crouching or kneeling near a tree",
-        "a person sitting on a log or ground",
-        "lower body only: human legs with pants and boots",
-        "upper body only: human torso with arms and hands visible",
-        "a hiker with a backpack and trekking poles",
-        "a person wearing a high-visibility vest or helmet",
-        "a person wearing camouflage clothing (hands or face partially visible)",
-        "a person holding a flashlight at night (beam visible)",
-        "a person using a headlamp at night (glare toward the camera)",
-        "a person holding a smartphone or camera in hand",
-        "an infrared night-vision image of a person outdoors",
-        "a thermal image of a person outdoors",
-        "a human silhouette at night",
-        "a motion-blurred person moving across the frame",
-        "a person partially hidden behind an animal feeder or tree",
-        "a person on a narrow trail with visible boots and calves",
-        "a person with gloves (fingers shape still discernible)",
-        "a person wearing a backpack viewed from behind",
-        "a person in rain or snow with wet clothing and visible face or hands",
+import csv
+import json
+import os
+import re
+import time
+import math
+import hashlib
+import statistics
+import subprocess
+import io
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, time as dtime
+from pathlib import Path
+
+try:
+    import exifread
+except Exception:
+    print("Нужна библиотека 'exifread'. Установите: pip install exifread", file=sys.stderr)
+    raise
+
+# ИИ-зависимости загружаются лениво (только если ENABLE_AI=True)
+_open_clip = None                                  # open_clip для zero-shot классификации
+_torch    = None                                   # pytorch для тензорных операций
+_cv2      = None                                   # opencv для работы с видео
+_np       = None                                   # numpy для массивов
+_PIL_Image = None                                  # PIL для загрузки изображений
+_PIL      = None                                   # основной модуль PIL
+
+
+def _lazy_import_ai():
+    global _open_clip, _torch, _cv2, _np, _PIL_Image, _PIL
+    if _open_clip is None:
+        import open_clip as _open_clip  # type: ignore
+    if _torch is None:
+        import torch as _torch  # type: ignore
+    if _cv2 is None:
+        import cv2 as _cv2  # type: ignore
+    if _np is None:
+        import numpy as _np  # type: ignore
+    if _PIL is None:
+        from PIL import Image as _PIL_Image  # type: ignore
+        _PIL = True
+
+
+# Папка серии
+SERIES_DIR_RE = re.compile(
+    r"^(?P<date>\d{4}-\d{2}-\d{2})_S(?P<idx>\d{3})_(?P<t1>\d{4})-(?P<t2>\d{4})(?:_(?P<tags>.*))?$"
+)
+NODATE_DIRNAME = "NoDate"
+
+EXT_JPG = {".jpg", ".jpeg", ".jpe", ".jfif", ".jif", ".pjpeg", ".pjp"}
+EXT_MOV = {".mov"}
+
+
+def _auto_workers():
+    return max(8, (os.cpu_count() or 8) * 4)
+
+
+def media_kind(path: Path) -> str:
+    ext = path.suffix.lower()
+    if ext in EXT_JPG: return "jpg"
+    if ext in EXT_MOV: return "mov"
+    return "other"
+
+
+def which_exiftool():
+    from shutil import which as _which
+    cand = _which("exiftool") or _which("exiftool.exe")
+    if cand: return cand
+    here = Path(__file__).resolve().parent
+    local = here / "exiftool.exe"
+    if local.exists():
+        return str(local)
+    return None
+
+
+def parse_series_interval(name: str):
+    m = SERIES_DIR_RE.match(name)
+    if not m:
+        return None
+    day_str = m.group("date")
+    t1 = m.group("t1");
+    t2 = m.group("t2")
+    idx = int(m.group("idx"))
+    day = datetime.strptime(day_str, "%Y-%m-%d").date()
+    try:
+        start_h, start_m = int(t1[:2]), int(t1[2:])
+        end_h, end_m = int(t2[:2]), int(t2[2:])
+    except ValueError:
+        return None
+    start_dt = datetime.combine(day, dtime(start_h, start_m, 0, 0))
+    end_dt = datetime.combine(day, dtime(end_h, end_m, 59, 999_999))  # Конец минуты включительно
+    if end_dt < start_dt:
+        return None
+    return day, start_dt, end_dt, t1, t2, idx
+
+
+# Чтение дат из метаданных
+def parse_exif_datetime_jpg(path: Path):
+    try:
+        with open(path, "rb") as f:
+            tags = exifread.process_file(f, stop_tag="EXIF DateTimeOriginal", details=False)
+        val = tags.get("EXIF DateTimeOriginal")
+        if val:
+            s = str(val)  # 'YYYY:MM:DD HH:MM:SS'
+            try:
+                dt = datetime.strptime(s, "%Y:%m:%d %H:%M:%S")
+                return (path, dt, "")
+            except Exception:
+                return (path, None, f"Bad format: {s!r}")
+        else:
+            return (path, None, "No EXIF DateTimeOriginal")
+    except Exception as e:
+        return (path, None, f"Error: {e}")
+
+
+def parse_dt_string(dt_str: str):
+    s = str(dt_str).strip()
+    # Обрезаем TZ/дроби секунд, если есть
+    if len(s) >= 19:
+        s = s[:19]
+    try:
+        return datetime.strptime(s, "%Y:%m:%d %H:%M:%S")
+    except Exception:
+        return None
+
+
+def exiftool_batch_mov(paths, exiftool_path, batch_size=800):
+    dated, nodate = {}, {}
+    if not paths:
+        return dated, nodate
+    if not exiftool_path:
+        for p in paths:
+            nodate[p] = "exiftool not found"
+        return dated, nodate
+
+    for i in range(0, len(paths), batch_size):
+        chunk = paths[i:i + batch_size]
+        try:
+            cmd = [
+                      exiftool_path,
+                      "-api", "largefilesupport=1",
+                      "-fast2",
+                      "-m",
+                      "-n",
+                      "-j",
+                      "-DateTimeOriginal",
+                      "-CreateDate",
+                      "-MediaCreateDate",
+                  ] + [str(p) for p in chunk]
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 text=True, encoding="utf-8", errors="replace")
+            if res.returncode != 0 and not res.stdout.strip():
+                reason = f"exiftool rc={res.returncode}: {res.stderr.strip()[:200]}"
+                for p in chunk:
+                    nodate[p] = reason
+                continue
+            try:
                 data = json.loads(res.stdout)
             except Exception as e:
                 for p in chunk:
                     nodate[p] = f"exiftool JSON parse error: {e}"
                 continue
-            by_src = { Path(d.get("SourceFile")).resolve(): d
-                       for d in data if isinstance(d, dict) and d.get("SourceFile") }
+            by_src = {Path(d.get("SourceFile")).resolve(): d
+                      for d in data if isinstance(d, dict) and d.get("SourceFile")}
             for p in chunk:
                 rec = by_src.get(p.resolve())
                 if not rec:
@@ -341,6 +354,7 @@ AI_CLASSES = {
                 nodate[p] = f"exiftool error: {e}"
     return dated, nodate
 
+
 # Утилиты
 def collect_targets(root: Path):
     series_dirs = []
@@ -357,6 +371,7 @@ def collect_targets(root: Path):
                 series_dirs.append(Path(entry.path))
     return series_dirs, nodate_dir
 
+
 def gaps_seconds(sorted_datetimes):
     if len(sorted_datetimes) < 2:
         return [], None, None, None, None
@@ -365,14 +380,17 @@ def gaps_seconds(sorted_datetimes):
     for cur in sorted_datetimes[1:]:
         diffs.append((cur - prev).total_seconds())
         prev = cur
-    mn = min(diffs); mx = max(diffs)
+    mn = min(diffs);
+    mx = max(diffs)
     mean = sum(diffs) / len(diffs)
     med = statistics.median(diffs)
     return diffs, mn, mx, mean, med
 
+
 def weekday_name(day):
-    names = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
-    return names[day.isoweekday()-1]
+    names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    return names[day.isoweekday() - 1]
+
 
 # Вычисляет энтропию распределения вероятностей
 def calculate_ai_entropy(probs_dict):
@@ -382,6 +400,7 @@ def calculate_ai_entropy(probs_dict):
         if prob > 0:
             entropy -= prob * math.log2(prob)
     return entropy
+
 
 # Вычисляет долю кадров, где топ-1 класс совпадает с финальным
 def calculate_ai_consensus(per_frame, final_label):
@@ -394,6 +413,7 @@ def calculate_ai_consensus(per_frame, final_label):
             consensus_count += 1
     return consensus_count / len(per_frame)
 
+
 # Возвращает категорию времени дня
 def get_time_of_day_category(hour):
     if 5 <= hour < 12:
@@ -405,6 +425,7 @@ def get_time_of_day_category(hour):
     else:
         return "night"
 
+
 # Определяет интенсивность активности
 def calculate_activity_intensity(files_per_hour):
     if files_per_hour < 10:
@@ -414,12 +435,14 @@ def calculate_activity_intensity(files_per_hour):
     else:
         return "high"
 
+
 # Определяет наличие всплесков активности (короткие интервалы)
 def detect_burst_activity(gaps_seconds, threshold_sec=60):
     if not gaps_seconds:
         return 0
     short_gaps = sum(1 for gap in gaps_seconds if gap < threshold_sec)
     return 1 if short_gaps > len(gaps_seconds) * 0.3 else 0
+
 
 # Определяет наличие аномальных интервалов
 def detect_gap_outliers(gaps_seconds):
@@ -430,28 +453,30 @@ def detect_gap_outliers(gaps_seconds):
     outliers = sum(1 for gap in gaps_seconds if gap > median_gap * 3 or gap < median_gap * 0.1)
     return 1 if outliers > 0 else 0
 
+
 # Вычисляет надежность предсказания (0-1)
 def calculate_prediction_reliability(consensus, confidence_gap, entropy, samples):
     if samples == 0:
         return 0.0
-    
+
     # Базовые компоненты
     consensus_score = consensus  # 0-1
     confidence_score = min(confidence_gap * 2, 1.0)  # нормализуем к 0-1
     entropy_score = max(0, 1.0 - entropy / 5.0)  # энтропия 0-5, инвертируем
-    
+
     # Веса компонентов
     reliability = (0.4 * consensus_score + 0.4 * confidence_score + 0.2 * entropy_score)
     return min(max(reliability, 0.0), 1.0)
+
 
 # Определяет качество детекции (high/medium/low)
 def calculate_detection_quality(consensus, entropy, samples, final_prob):
     if samples == 0:
         return "unknown"
-    
+
     # Комбинированная оценка
-    quality_score = (consensus * 0.5 + (1.0 - entropy/5.0) * 0.3 + final_prob * 0.2)
-    
+    quality_score = (consensus * 0.5 + (1.0 - entropy / 5.0) * 0.3 + final_prob * 0.2)
+
     if quality_score >= 0.7:
         return "high"
     elif quality_score >= 0.4:
@@ -459,9 +484,11 @@ def calculate_detection_quality(consensus, entropy, samples, final_prob):
     else:
         return "low"
 
+
 # Подсчитывает количество классов с вероятностью выше порога
 def calculate_ai_class_diversity(probs_dict, threshold=0.1):
     return sum(1 for prob in probs_dict.values() if prob >= threshold)
+
 
 # Определяет уровень неопределенности по энтропии
 def calculate_ai_uncertainty_level(entropy):
@@ -471,6 +498,7 @@ def calculate_ai_uncertainty_level(entropy):
         return "medium"
     else:
         return "high"
+
 
 def write_series_db_rows(db_path: Path, rows, with_bom=False):
     need_header = not db_path.exists() or db_path.stat().st_size == 0
@@ -490,10 +518,10 @@ def write_series_db_rows(db_path: Path, rows, with_bom=False):
         "gap_outliers", "activity_intensity", "burst_activity"
     ]
     ai_cols = [
-        "ai_model","ai_samples",
-        "ai_top1_label","ai_top1_series_prob","ai_top3",
+        "ai_model", "ai_samples",
+        "ai_top1_label", "ai_top1_series_prob", "ai_top3",
         "ai_counts_json",
-        "ai_final_label","ai_final_prob",
+        "ai_final_label", "ai_final_prob",
         "ai_consensus", "ai_entropy", "ai_confidence_gap", "ai_second_place_gap",
         "prediction_reliability", "detection_quality", "ai_class_diversity", "ai_uncertainty_level"
     ]
@@ -504,6 +532,7 @@ def write_series_db_rows(db_path: Path, rows, with_bom=False):
             w.writerow(cols)
         for r in rows:
             w.writerow([r.get(c, "") for c in cols])
+
 
 # Равномерная выборка k элементов по индексу (если k>=len -> все)
 def even_sample(items, k):
@@ -517,6 +546,7 @@ def even_sample(items, k):
     if out and out[-1] != items[-1]:
         out[-1] = items[-1]
     return out
+
 
 # AI: CLIP zero-shot
 class SeriesAI:
@@ -545,8 +575,8 @@ class SeriesAI:
         self.batch = batch
 
         # Визуальные прототипы из content
-        self.proto_matrix = None   # [C,D] выровнено по self.class_names
-        self.proto_mask = None     # [C] 1 там, где есть прототип, иначе 0
+        self.proto_matrix = None  # [C,D] выровнено по self.class_names
+        self.proto_mask = None  # [C] 1 там, где есть прототип, иначе 0
         if ENABLE_FEWSHOT and CONTENT_DIR:
             try:
                 self._init_visual_prototypes(
@@ -597,14 +627,15 @@ class SeriesAI:
                 except Exception:
                     continue
                 if len(batch_pil) == self.batch:
-                    f = self._encode_images(batch_pil)   # Уже L2-нормированы
-                    feats.append(f); batch_pil = []
+                    f = self._encode_images(batch_pil)  # Уже L2-нормированы
+                    feats.append(f);
+                    batch_pil = []
             if batch_pil:
                 feats.append(self._encode_images(batch_pil))
             if not feats:
                 continue
-            mat = _torch.cat(feats, dim=0)            # [N,D]
-            proto = mat.mean(dim=0, keepdim=True)     # [1,D]
+            mat = _torch.cat(feats, dim=0)  # [N,D]
+            proto = mat.mean(dim=0, keepdim=True)  # [1,D]
             proto = proto / proto.norm(dim=-1, keepdim=True)
             by_label[target_label].append(proto)
 
@@ -619,7 +650,7 @@ class SeriesAI:
             if vecs:
                 m = _torch.cat(vecs, dim=0).mean(dim=0, keepdim=True)
                 m = m / m.norm(dim=-1, keepdim=True)
-                proto_mat[j:j+1, :] = m
+                proto_mat[j:j + 1, :] = m
                 mask[j] = 1.0
                 filled += 1
 
@@ -670,13 +701,12 @@ class SeriesAI:
                         mean_vals = (proto_logits_raw * mask).sum(dim=-1, keepdim=True) / denom
                         proto_logits_centered = (proto_logits_raw - mean_vals) * mask
                         logits = (1.0 - PROTO_WEIGHT) * logits_text + PROTO_WEIGHT * (
-                                    PROTO_TEMPERATURE * proto_logits_centered)
+                                PROTO_TEMPERATURE * proto_logits_centered)
 
                 probs = logits.softmax(dim=-1).cpu().numpy()
                 for row in probs:
                     outs.append({self.class_names[j]: float(row[j]) for j in range(len(self.class_names))})
         return outs
-
 
     def aggregate_series(self, per_frame):
         """
@@ -689,7 +719,7 @@ class SeriesAI:
         C = len(self.class_names)
         names = self.class_names
         # Presence (noisy-OR)
-        prod = [1.0]*C
+        prod = [1.0] * C
         for dist in per_frame:
             for j, name in enumerate(names):
                 prod[j] *= (1.0 - dist[name])
@@ -697,7 +727,7 @@ class SeriesAI:
 
         # Mean prob
         if per_frame:
-            mean_prob = {name: float(sum(d[name] for d in per_frame))/len(per_frame) for name in names}
+            mean_prob = {name: float(sum(d[name] for d in per_frame)) / len(per_frame) for name in names}
         else:
             mean_prob = {name: 0.0 for name in names}
 
@@ -707,7 +737,7 @@ class SeriesAI:
             best = max(dist.items(), key=lambda kv: kv[1])
             if best[1] >= FRAME_CONF_THRESHOLD:
                 counts[best[0]] += 1
-        share_top1 = {name: (counts[name]/len(per_frame) if per_frame else 0.0) for name in names}
+        share_top1 = {name: (counts[name] / len(per_frame) if per_frame else 0.0) for name in names}
 
         return presence, mean_prob, share_top1, counts
 
@@ -722,10 +752,11 @@ class SeriesAI:
             "mean": mean_prob,
             "share": share_top1,
             "counts": counts,
-            "top": top_presence,          
-            "series_probs": presence,    
+            "top": top_presence,
+            "series_probs": presence,
             "samples": len(per_frame)
         }
+
 
 # Логика объединения меток (elk -> deer)
 def merge_labels(res, merge_map):
@@ -756,10 +787,11 @@ def merge_labels(res, merge_map):
         "mean": meanp,
         "share": share,
         "counts": counts,
-        "series_probs": presence,  
+        "series_probs": presence,
         "top": _sorted_top(presence),
         "samples": res.get("samples", 0)
     }
+
 
 # Возвращает (suppress_empty: bool, factor: float, reason: str)
 # factor применяется к вкладy empty в финальном скоринге
@@ -779,8 +811,8 @@ def apply_empty_gating(presence, share):
 
     # Явное доминирование empty - не подавляем только при очень высоких показателях
     empty_clearly_dominates = (
-        (empty_share >= max_nonempty_share + EMPTY_KEEP_MARGIN) or
-        (empty_presence >= max_nonempty_presence + EMPTY_KEEP_MARGIN)
+            (empty_share >= max_nonempty_share + EMPTY_KEEP_MARGIN) or
+            (empty_presence >= max_nonempty_presence + EMPTY_KEEP_MARGIN)
     )
     empty_big_enough = (empty_share >= EMPTY_KEEP_SHARE) or (empty_presence >= EMPTY_KEEP_PRESENCE)
 
@@ -788,14 +820,16 @@ def apply_empty_gating(presence, share):
         return False, 1.0, "empty_clearly_dominates"
 
     # Сильный сигнал не-empty - подавляем
-    strong_nonempty = (max_nonempty_share >= NONEMPTY_STRONG_SHARE) or (max_nonempty_presence >= NONEMPTY_STRONG_PRESENCE)
+    strong_nonempty = (max_nonempty_share >= NONEMPTY_STRONG_SHARE) or (
+                max_nonempty_presence >= NONEMPTY_STRONG_PRESENCE)
     if strong_nonempty:
         return True, max(EMPTY_MIN_FACTOR, EMPTY_SUPPRESS_FACTOR), "strong_nonempty_signal"
 
     # По умолчанию подавляем empty, если он не дотягивает до keep-порогов
     if not empty_big_enough:
-        return True, 0.4, "weak_empty_suppress"  
+        return True, 0.4, "weak_empty_suppress"
     return False, 1.0, "no_suppression"
+
 
 # Точка входа
 def main():
@@ -841,7 +875,8 @@ def main():
                         nodate_files.append(p)
         all_paths.extend(nodate_files)
 
-    print(f"К проверке файлов: {len(all_paths)} (в сериях: {sum(len(v) for v in per_dir_files.values())}, в NoDate: {len(nodate_files)})")
+    print(
+        f"К проверке файлов: {len(all_paths)} (в сериях: {sum(len(v) for v in per_dir_files.values())}, в NoDate: {len(nodate_files)})")
 
     # EXIF даты
     jpgs = [p for p in all_paths if media_kind(p) == "jpg"]
@@ -903,7 +938,7 @@ def main():
         dated = [(p, meta_dt.get(p)) for p in series_paths if p in meta_dt]
         others = [p for p in series_paths if p not in meta_dt]
         dated.sort(key=lambda x: x[1])
-        ordered = [p for p,_ in dated] + others
+        ordered = [p for p, _ in dated] + others
         imgs = [p for p in ordered if media_kind(p) == "jpg"]
         imgs = even_sample(imgs, MAX_IMAGES_PER_SERIES)
         frames = []
@@ -925,7 +960,7 @@ def main():
                 frames_count = int(cap.get(_cv2.CAP_PROP_FRAME_COUNT))
                 if frames_count <= 0:
                     step = max(1, int(cap.get(_cv2.CAP_PROP_FPS) or 10))
-                    wanted = [i*step for i in range(FRAMES_PER_VIDEO)]
+                    wanted = [i * step for i in range(FRAMES_PER_VIDEO)]
                 else:
                     wanted = even_sample(list(range(frames_count)), FRAMES_PER_VIDEO)
                 for idx in wanted:
@@ -956,13 +991,17 @@ def main():
 
         for p in files:
             kind = media_kind(p)
-            if kind == "jpg": jpg_count += 1
-            elif kind == "mov": mov_count += 1
+            if kind == "jpg":
+                jpg_count += 1
+            elif kind == "mov":
+                mov_count += 1
 
             dt = meta_dt.get(p)
             if not dt:
                 reason = meta_reason.get(p, "No date")
-                details_rows.append([str(d), p.name, "", f"{start_hhmm[:2]}:{start_hhmm[2:]}-{end_hhmm[:2]}:{end_hhmm[2:]}", "NO_DATE", reason])
+                details_rows.append(
+                    [str(d), p.name, "", f"{start_hhmm[:2]}:{start_hhmm[2:]}-{end_hhmm[:2]}:{end_hhmm[2:]}", "NO_DATE",
+                     reason])
                 err_count += 1
                 continue
             times.append(dt)
@@ -980,7 +1019,8 @@ def main():
         files_total = len(files)
         if times:
             times.sort()
-            mn = times[0]; mx = times[-1]
+            mn = times[0];
+            mx = times[-1]
             duration_sec = (mx - mn).total_seconds()
             diffs, gmin, gmax, gmean, gmed = gaps_seconds(times)
             summary_rows.append([str(d), files_total, err_count, mn.strftime("%H:%M:%S"), mx.strftime("%H:%M:%S")])
@@ -1007,13 +1047,12 @@ def main():
             if MERGE_LABELS:
                 res = merge_labels(res, MERGE_LABELS)
 
-            # Series aggregates
             presence = res["presence"]
             share = res["share"]
             counts = res["counts"]
             ai_samples = res["samples"]
 
-            # Базовый top-3 (по presence) - для совместимости/наглядности
+            # Базовый top-3 (по presence) - наглядности
             top_presence = sorted(presence.items(), key=lambda kv: kv[1], reverse=True)
             ai_model_name = f"{CLIP_MODEL}_{CLIP_PRETRAINED}"
             if ai_samples > 0:
@@ -1022,11 +1061,10 @@ def main():
                 ai_topk_str = ";".join([f"{n}:{p:.4f}" for n, p in top_presence[:AI_TOPK_TO_DB]])
                 ai_counts_json = json.dumps(counts, ensure_ascii=False)
 
-
             # ИТОГОВЫЙ ОТВЕТ (учёт частоты кадров)
             # Score = W_PRESENCE * presence + W_SHARE * share_top1
             # Исключим empty из соревнования, если есть другие классы
-            candidate_names = list(presence.keys())  
+            candidate_names = list(presence.keys())
 
             # Базовые баллы
             scores = {k: (W_PRESENCE * presence.get(k, 0.0) + W_SHARE * share.get(k, 0.0))
@@ -1050,30 +1088,30 @@ def main():
                 ai_final_label = final_sorted[0][0]
                 ai_final_prob = f"{final_sorted[0][1]:.4f}"
 
-
-            top_show = "; ".join([f"{n}:{presence[n]:.2f}" for n,_ in top_presence[:SERIES_CONF_PRINT_TOPK]])
-            counts_show = ", ".join([f"{n}={counts[n]}" for n in ["deer","moose","bear","person","empty"] if n in counts])
+            top_show = "; ".join([f"{n}:{presence[n]:.2f}" for n, _ in top_presence[:SERIES_CONF_PRINT_TOPK]])
+            counts_show = ", ".join(
+                [f"{n}={counts[n]}" for n in ["deer", "moose", "bear", "person", "empty"] if n in counts])
 
         # Временные метрики
         hour_of_day = int(start_hhmm[:2]) if start_hhmm else ""
         is_weekend = 1 if weekday_name(day) in ["Sat", "Sun"] else 0
         time_of_day_category = get_time_of_day_category(hour_of_day) if hour_of_day != "" else ""
-        
+
         # Метрики активности
         session_length_hours = (mx - mn).total_seconds() / 3600 if times else 0
         files_per_minute = files_total / (session_length_hours * 60) if session_length_hours > 0 else 0
         files_per_hour = files_total / session_length_hours if session_length_hours > 0 else 0
-        
+
         # Качество данных
         jpg_mov_ratio = jpg_count / mov_count if mov_count > 0 else (jpg_count if jpg_count > 0 else 0)
         error_rate = err_count / files_total if files_total > 0 else 0
-        date_consistency = 1 if not err_count else 0  
-        
+        date_consistency = 1 if not err_count else 0
+
         # Анализ интервалов
         gap_outliers = detect_gap_outliers(diffs) if diffs else 0
         activity_intensity = calculate_activity_intensity(files_per_hour)
         burst_activity = detect_burst_activity(diffs) if diffs else 0
-        
+
         # AI метрики
         ai_consensus = 0.0
         ai_entropy = 0.0
@@ -1083,17 +1121,17 @@ def main():
         detection_quality = "unknown"
         ai_class_diversity = 0
         ai_uncertainty_level = "unknown"
-        
+
         if ENABLE_AI and ai is not None and files_total > 0 and 'res' in locals():
             ai_consensus = calculate_ai_consensus(res.get("per_frame", []), ai_final_label)
             ai_entropy = calculate_ai_entropy(presence) if 'presence' in locals() else 0.0
-            
+
             # Разрывы в уверенности
             if len(top_presence) >= 2:
                 ai_confidence_gap = top_presence[0][1] - top_presence[1][1]
             if len(top_presence) >= 3:
                 ai_second_place_gap = top_presence[1][1] - top_presence[2][1]
-            
+
             prediction_reliability = calculate_prediction_reliability(
                 ai_consensus, ai_confidence_gap, ai_entropy, ai_samples
             )
@@ -1117,7 +1155,7 @@ def main():
                 "start_hhmm": start_hhmm,
                 "end_hhmm": end_hhmm,
                 "first_dt": mn.strftime("%Y-%m-%d %H:%M:%S") if times else "",
-                "last_dt":  mx.strftime("%Y-%m-%d %H:%M:%S") if times else "",
+                "last_dt": mx.strftime("%Y-%m-%d %H:%M:%S") if times else "",
                 "duration_sec": int((mx - mn).total_seconds()) if times else "",
                 "files_total": files_total,
                 "jpg_count": jpg_count,
@@ -1199,6 +1237,7 @@ def main():
     print(f"Сводка: {sum_csv}")
     print(f"Детали: {det_csv}")
     print(f"Готово за {t1 - t0:.1f} сек.")
+
 
 if __name__ == "__main__":
     main()
